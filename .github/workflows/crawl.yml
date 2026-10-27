@@ -1,0 +1,49 @@
+name: crawl
+
+on:
+  schedule:
+    # 5분마다 깨어나 탭별 예약(KST) 중 도래한 슬롯과 수동 요청 큐를 처리한다.
+    # GitHub 의 schedule 은 정시를 보장하지 않으며 부하 시 지연·누락될 수 있다.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'manual | schedule'
+        required: false
+        default: manual
+      job_id:
+        description: 'refresh_jobs.id (정보용)'
+        required: false
+
+# 같은 시각에 두 실행이 겹치지 않도록. DB 측에서도 작업 락(fpr_claim_jobs)으로 중복을 막는다.
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: crawler/requirements.txt
+      - run: pip install -r crawler/requirements.txt
+      - name: Run crawler
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          COUPANG_PARTNERS_ACCESS_KEY: ${{ secrets.COUPANG_PARTNERS_ACCESS_KEY }}
+          COUPANG_PARTNERS_SECRET_KEY: ${{ secrets.COUPANG_PARTNERS_SECRET_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY secret 이 없어 수집을 건너뜁니다."
+            exit 0
+          fi
+          python -m crawler.main run

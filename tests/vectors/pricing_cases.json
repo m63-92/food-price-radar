@@ -1,0 +1,18 @@
+{
+  "_comment": "최저 유효 상품가·원/kg 계산 벡터(명세 5.2, 12장). 배송비는 입력에 있어도 단가 계산에 쓰이지 않아야 한다.",
+  "cases": [
+    { "name": "쿠폰 적용 가능 최저가", "regular": 10000, "sale": 8000, "coupon": 7000, "couponEligible": true, "weightKg": 1, "shippingPrice": null, "best": 7000, "kind": "coupon", "unit": 7000, "warnings": [] },
+    { "name": "배송비 3,000원이어도 단가 동일", "regular": 10000, "sale": 8000, "coupon": 7000, "couponEligible": true, "weightKg": 1, "shippingPrice": 3000, "best": 7000, "kind": "coupon", "unit": 7000, "warnings": [] },
+    { "name": "정상가만 4,500원 / 500g", "regular": 4500, "sale": null, "coupon": null, "couponEligible": null, "weightKg": 0.5, "shippingPrice": null, "best": 4500, "kind": "regular", "unit": 9000, "warnings": [] },
+    { "name": "쿠폰가 미확인", "regular": 10000, "sale": 8000, "coupon": null, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": 8000, "kind": "sale", "unit": 8000, "warnings": [] },
+    { "name": "쿠폰 조건 불충족은 제외", "regular": 10000, "sale": 8000, "coupon": 7000, "couponEligible": false, "weightKg": 1, "shippingPrice": null, "best": 8000, "kind": "sale", "unit": 8000, "warnings": ["coupon_excluded"] },
+    { "name": "쿠폰 조건 미확인(null)도 제외", "regular": 10000, "sale": 8000, "coupon": 7000, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": 8000, "kind": "sale", "unit": 8000, "warnings": ["coupon_excluded"] },
+    { "name": "모든 가격 null", "regular": null, "sale": null, "coupon": null, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": null, "kind": null, "unit": null, "warnings": [] },
+    { "name": "중량 미확인", "regular": 3900, "sale": null, "coupon": null, "couponEligible": null, "weightKg": null, "shippingPrice": null, "best": 3900, "kind": "regular", "unit": null, "warnings": [] },
+    { "name": "중량 0 - 0으로 나누기 금지", "regular": 3900, "sale": null, "coupon": null, "couponEligible": null, "weightKg": 0, "shippingPrice": null, "best": 3900, "kind": "regular", "unit": null, "warnings": [] },
+    { "name": "할인가가 정상가보다 큼", "regular": 8000, "sale": 9000, "coupon": null, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": 8000, "kind": "regular", "unit": 8000, "warnings": ["sale_gt_regular"] },
+    { "name": "정상가=할인가 동률은 정상가 표기", "regular": 1620, "sale": 1620, "coupon": null, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": 1620, "kind": "regular", "unit": 1620, "warnings": [] },
+    { "name": "음수 가격은 무효", "regular": -1, "sale": 5000, "coupon": null, "couponEligible": null, "weightKg": 2, "shippingPrice": null, "best": 5000, "kind": "sale", "unit": 2500, "warnings": [] },
+    { "name": "무료 상품 0원은 유효", "regular": 0, "sale": null, "coupon": null, "couponEligible": null, "weightKg": 1, "shippingPrice": null, "best": 0, "kind": "regular", "unit": 0, "warnings": [] }
+  ]
+}
