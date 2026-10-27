@@ -250,6 +250,17 @@ await test('수동 갱신 요청은 탭별 대기열에 하나만', async () => 
   await assert.rejects(anon(`select fpr_enqueue_refresh(null)`));
 });
 
+await test('예약을 켜거나 바꾸면 그 이전에 지난 슬롯은 따라잡지 않음', async () => {
+  const before = Date.now();
+  await user(U1, `update category_schedules set enabled = true, frequency = 'daily', times_of_day = '{08:30}' where category_id = $1`, [catId]);
+  const s = (await user(U1, `select last_enqueued_slot from category_schedules where category_id = $1`, [catId])).rows[0];
+  assert.ok(new Date(s.last_enqueued_slot).getTime() >= before - 5000);
+  // 수집기의 큐잉 기록 갱신(설정 변경 아님)은 가드에 걸리지 않는다
+  await service(`update category_schedules set next_due_at = now() where category_id = $1`, [catId]);
+  const s2 = (await user(U1, `select last_enqueued_slot from category_schedules where category_id = $1`, [catId])).rows[0];
+  assert.equal(new Date(s2.last_enqueued_slot).getTime(), new Date(s.last_enqueued_slot).getTime());
+});
+
 await test('예약 슬롯은 같은 slot_key 로 한 번만 큐에 들어감', async () => {
   const slot = '2026-10-27T23:30:00Z';
   const a = await service(`select fpr_enqueue_scheduled($1, $2, $3) as id`, [catId, slot, '2026-10-28T23:30:00Z']);
