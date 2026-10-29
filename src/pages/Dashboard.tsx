@@ -1,6 +1,7 @@
 import {
   ArchiveRestore,
   CalendarClock,
+  Columns3,
   Download,
   FileUp,
   LineChart,
@@ -30,6 +31,7 @@ import { ScheduleModal } from '../components/ScheduleModal';
 import { useToast } from '../components/Toast';
 import { Drawer, EmptyState, JOB_LABEL, JobBadge, Segmented, SkeletonRows, SOURCE_LABEL } from '../components/ui';
 import type { Category, ProductRow, ProductSourceStatus, RefreshJob, SortMode, Source } from '../types';
+import { useColumnWidths } from '../lib/columnWidths';
 import { downloadText, toCsv, type ImportRow } from '../lib/domain/csv';
 import { formatKst, type UnitView } from '../lib/domain/format';
 import { unitOf } from '../lib/domain/units';
@@ -101,6 +103,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
   const [query, setQuery] = useState('');
   const [purge, setPurge] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const colW = useColumnWidths(active?.id ?? null);
 
   useEffect(() => writeLocal(VIEW_KEY, view), [view]);
   useEffect(() => {
@@ -216,7 +219,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
           <div className="mr-auto flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-700 text-white" aria-hidden>
               <LineChart size={17} />
@@ -263,8 +266,8 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
         </Drawer>
       )}
 
-      <div className="mx-auto flex max-w-[1600px] gap-6 px-4 py-5 sm:px-6">
-        <aside className="hidden w-52 shrink-0 lg:block">
+      <div className="flex gap-5 px-4 py-5 sm:px-6">
+        <aside className="hidden w-44 shrink-0 lg:block">
           <div className="sticky top-4">
             {cats.isLoading ? (
               <SkeletonRows rows={4} />
@@ -307,7 +310,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                 </p>
                 <ScheduleLine categoryId={active.id} />
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 sm:ml-auto sm:justify-end">
                 <button className="btn-secondary" onClick={() => setDialog({ kind: 'category', category: active })}>
                   <Settings2 size={15} /> 품목 설정
                 </button>
@@ -327,6 +330,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                   items={[
                     { label: 'CSV 가져오기 (수동 등록)', icon: <FileUp size={15} />, onSelect: () => setDialog({ kind: 'import' }) },
                     { label: '이 탭 CSV 내보내기', icon: <Download size={15} />, onSelect: exportCategoryCsv },
+                    { label: '열 너비 초기화', icon: <Columns3 size={15} />, hidden: !colW.customized, onSelect: colW.resetAll },
                     { label: '삭제한 상품 복구', icon: <ArchiveRestore size={15} />, onSelect: () => setDialog({ kind: 'deleted' }) },
                     { label: '탭 삭제', icon: <Trash2 size={15} />, danger: true, onSelect: () => (setPurge(false), setDialog({ kind: 'deleteCategory', category: active })) },
                   ]}
@@ -416,6 +420,9 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                   rows={rows}
                   category={active}
                   view={view.basis}
+                  widths={colW.widths}
+                  onResize={colW.setWidth}
+                  onResetWidth={colW.resetWidth}
                   onHistory={(p) => setDialog({ kind: 'history', product: p })}
                   onEdit={(p) => setDialog({ kind: 'edit', product: p })}
                   onDelete={(p) => setDialog({ kind: 'deleteProduct', product: p })}
