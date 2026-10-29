@@ -31,7 +31,7 @@ class AdapterError(Exception):
 
 
 class PoliteHttpClient:
-    def __init__(self, min_interval_s: float = 3.0, timeout_s: float = 20.0, max_retries: int = 3,
+    def __init__(self, min_interval_s: float = 1.5, timeout_s: float = 20.0, max_retries: int = 3,
                  transport: httpx.BaseTransport | None = None, sleep=time.sleep):
         self._client = httpx.Client(
             headers={"User-Agent": USER_AGENT, "Accept-Language": "ko-KR,ko;q=0.9"},

@@ -1,4 +1,4 @@
-import type { PriceObservation, PriceSnapshot, RangeKey } from '../../types';
+import type { PriceObservation, PriceSnapshot, RangeKey, UnitBasis } from '../../types';
 import { kstDayKey } from './format';
 
 /**
@@ -42,10 +42,14 @@ export const SERIES_LABEL: Record<SeriesKey, string> = {
   sale: '할인가',
   coupon: '쿠폰가',
   best: '최저 유효 상품가',
-  unit: '가격/중량(원/kg)',
+  unit: '단가',
 };
 
-export function seriesValue(snap: PriceSnapshot, key: SeriesKey): number | null {
+export function snapUnit(snap: PriceSnapshot, basis: UnitBasis): number | null {
+  return basis === 'piece' ? snap.unitPriceKrwPerPiece : snap.unitPriceKrwPerKg;
+}
+
+export function seriesValue(snap: PriceSnapshot, key: SeriesKey, basis: UnitBasis = 'kg'): number | null {
   switch (key) {
     case 'regular':
       return snap.regularPriceKrw;
@@ -56,7 +60,7 @@ export function seriesValue(snap: PriceSnapshot, key: SeriesKey): number | null 
     case 'best':
       return snap.bestPriceKrw;
     case 'unit':
-      return snap.unitPriceKrwPerKg;
+      return snapUnit(snap, basis);
   }
 }
 
@@ -101,11 +105,12 @@ export function getPriceChangeSummary(
   range: RangeKey,
   now: number,
   mode: SnapshotMode = 'effective',
+  basis: UnitBasis = 'kg',
 ): { price: ChangeSummary; unit: ChangeSummary } {
   const inRange = filterRange(obs, range, now);
   return {
     price: summarize(inRange.map((o) => ({ at: o.observedAt, value: o[mode].bestPriceKrw }))),
-    unit: summarize(inRange.map((o) => ({ at: o.observedAt, value: o[mode].unitPriceKrwPerKg }))),
+    unit: summarize(inRange.map((o) => ({ at: o.observedAt, value: snapUnit(o[mode], basis) }))),
   };
 }
 
@@ -122,14 +127,14 @@ export interface HistoryPoint {
   unitDelta: number | null;
 }
 
-export function buildHistoryPoints(obs: PriceObservation[], mode: SnapshotMode): HistoryPoint[] {
+export function buildHistoryPoints(obs: PriceObservation[], mode: SnapshotMode, basis: UnitBasis = 'kg'): HistoryPoint[] {
   const sorted = [...obs].sort(compareObservations);
   let prevBest: number | null = null;
   let prevUnit: number | null = null;
   return sorted.map((o) => {
     const snap = o[mode];
     const best = snap.bestPriceKrw;
-    const unit = snap.unitPriceKrwPerKg;
+    const unit = snapUnit(snap, basis);
     const point: HistoryPoint = {
       t: Date.parse(o.observedAt),
       observation: o,
@@ -150,10 +155,10 @@ export function buildHistoryPoints(obs: PriceObservation[], mode: SnapshotMode):
 /**
  * 일별 대표값: KST 날짜별 그날 마지막 성공 관측의 원/kg. 관측이 없는 날은 키가 없다.
  */
-export function dailyRepresentative(obs: PriceObservation[], mode: SnapshotMode = 'effective'): Map<string, number | null> {
+export function dailyRepresentative(obs: PriceObservation[], mode: SnapshotMode = 'effective', basis: UnitBasis = 'kg'): Map<string, number | null> {
   const out = new Map<string, number | null>();
   for (const o of [...obs].sort(compareObservations)) {
-    out.set(kstDayKey(o.observedAt), o[mode].unitPriceKrwPerKg);
+    out.set(kstDayKey(o.observedAt), snapUnit(o[mode], basis));
   }
   return out;
 }
@@ -186,13 +191,14 @@ export function buildComparison(
   range: RangeKey,
   now: number,
   mode: SnapshotMode = 'effective',
+  basis: UnitBasis = 'kg',
 ): { rows: ComparisonRow[]; insufficient: string[] } {
   const daily: Record<string, Map<string, number | null>> = {};
   const insufficient: string[] = [];
   let minDay: string | null = null;
   for (const [pid, obs] of Object.entries(obsByProduct)) {
     const inRange = filterRange(obs, range, now);
-    const rep = dailyRepresentative(inRange, mode);
+    const rep = dailyRepresentative(inRange, mode, basis);
     daily[pid] = rep;
     const hasValue = [...rep.values()].some((v) => v != null);
     if (!hasValue) insufficient.push(pid);

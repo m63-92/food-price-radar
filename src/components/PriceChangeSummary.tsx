@@ -1,9 +1,9 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
 import type { ChangeSummary } from '../lib/domain/history';
-import { formatKrw, formatKstShort, formatPct, formatSignedKrw, formatUnitPrice } from '../lib/domain/format';
+import { formatKrw, formatKstShort, formatPct, formatSignedKrw } from '../lib/domain/format';
 import { cx } from './ui';
 
-function Delta({ s, unit }: { s: ChangeSummary; unit: boolean }) {
+function Delta({ s, suffix }: { s: ChangeSummary; suffix: string }) {
   if (s.delta == null) return <span className="text-slate-400">-</span>;
   const dir = s.delta < 0 ? 'down' : s.delta > 0 ? 'up' : 'flat';
   const Icon = dir === 'down' ? ArrowDownRight : dir === 'up' ? ArrowUpRight : Minus;
@@ -11,17 +11,27 @@ function Delta({ s, unit }: { s: ChangeSummary; unit: boolean }) {
   return (
     <span className={cx('inline-flex items-center gap-0.5 font-semibold', dir === 'down' && 'text-blue-700', dir === 'up' && 'text-red-700', dir === 'flat' && 'text-slate-600')}>
       <Icon size={14} aria-hidden />
-      {formatSignedKrw(s.delta, unit ? '/kg' : '')} ({formatPct(s.pct)})
+      {formatSignedKrw(s.delta, suffix)} ({formatPct(s.pct)})
     </span>
   );
 }
 
-export function PriceChangeSummary({ price, unit }: { price: ChangeSummary; unit: ChangeSummary }) {
+export function PriceChangeSummary({
+  price,
+  unit,
+  formatUnitValue,
+  unitSuffix,
+}: {
+  price: ChangeSummary;
+  unit: ChangeSummary;
+  formatUnitValue: (v: number | null) => string;
+  unitSuffix: string;
+}) {
   const rows: Array<{ label: string; s: ChangeSummary; isUnit: boolean }> = [
-    { label: '가격/중량', s: unit, isUnit: true },
+    { label: `단가 (원/${unitSuffix})`, s: unit, isUnit: true },
     { label: '최저 유효 상품가', s: price, isUnit: false },
   ];
-  const fmt = (v: number | null, isUnit: boolean) => (isUnit ? formatUnitPrice(v) : formatKrw(v));
+  const fmt = (v: number | null, isUnit: boolean) => (isUnit ? formatUnitValue(v) : formatKrw(v));
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {rows.map(({ label, s, isUnit }) => (
@@ -30,7 +40,7 @@ export function PriceChangeSummary({ price, unit }: { price: ChangeSummary; unit
           <div className="num mt-1 text-lg font-semibold leading-6">{fmt(s.last, isUnit)}</div>
           <div className="num mt-0.5 text-[13px]">
             <span className="text-slate-500">기간 첫 값 대비 </span>
-            <Delta s={s} unit={isUnit} />
+            <Delta s={s} suffix={isUnit ? `/${unitSuffix}` : ''} />
           </div>
           <dl className="num mt-2 grid grid-cols-3 gap-1 text-[12px]">
             <div>

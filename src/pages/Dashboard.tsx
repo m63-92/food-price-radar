@@ -6,6 +6,7 @@ import {
   LineChart,
   ListChecks,
   LogOut,
+  Menu as MenuIcon,
   PackageSearch,
   Plus,
   RefreshCw,
@@ -16,7 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CategoryModal } from '../components/CategoryModal';
 import { CategoryPriceComparison } from '../components/CategoryPriceComparison';
-import { CategoryTabs } from '../components/CategoryTabs';
+import { CategorySidebar } from '../components/CategorySidebar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CrawlLogDrawer } from '../components/CrawlLogDrawer';
 import { DeletedItemsDrawer } from '../components/DeletedItemsDrawer';
@@ -24,13 +25,14 @@ import { ImportCsvModal } from '../components/ImportCsvModal';
 import { Menu } from '../components/Menu';
 import { ProductEditDrawer, type EditResult } from '../components/ProductEditDrawer';
 import { ProductPriceHistoryDrawer } from '../components/ProductPriceHistoryDrawer';
-import { ProductTable } from '../components/ProductTable';
+import { ProductTable, isOrderable } from '../components/ProductTable';
 import { ScheduleModal } from '../components/ScheduleModal';
 import { useToast } from '../components/Toast';
-import { EmptyState, JOB_LABEL, JobBadge, Segmented, SkeletonRows, SOURCE_LABEL } from '../components/ui';
+import { Drawer, EmptyState, JOB_LABEL, JobBadge, Segmented, SkeletonRows, SOURCE_LABEL } from '../components/ui';
 import type { Category, ProductRow, ProductSourceStatus, RefreshJob, SortMode, Source } from '../types';
 import { downloadText, toCsv, type ImportRow } from '../lib/domain/csv';
-import { formatKst, type UnitBasis } from '../lib/domain/format';
+import { formatKst, type UnitView } from '../lib/domain/format';
+import { unitOf } from '../lib/domain/units';
 import { nextSlotAfter, WEEKDAY_LABEL } from '../lib/domain/schedule';
 import { SORT_LABEL, sortProducts } from '../lib/domain/sort';
 import { useCategories, useJobs, useMutations, useProducts, useSchedule } from '../lib/queries';
@@ -40,10 +42,20 @@ interface ViewPrefs {
   sort: SortMode;
   source: Source | 'all';
   status: ProductSourceStatus | 'all';
-  basis: UnitBasis;
+  basis: UnitView;
+  /** Q7 필터: 주문 가능 여부 · 마감 시각(이후) · 배송 기간(이내) */
+  order: 'all' | 'orderable' | 'not_orderable';
+  cutoffAfter: 'all' | '12' | '15' | '18' | '21';
+  leadWithin: 'all' | '0' | '1' | '2' | '3';
 }
 const VIEW_KEY = 'fpr-view';
-const DEFAULT_VIEW: ViewPrefs = { sort: 'unit_asc', source: 'all', status: 'all', basis: 'kg' };
+const DEFAULT_VIEW: ViewPrefs = { sort: 'unit_asc', source: 'all', status: 'all', basis: 'kg', order: 'all', cutoffAfter: 'all', leadWithin: 'all' };
+
+/** 상품명에 제외 키워드가 있으면 true (수집기 fpr_is_excluded 와 같은 규칙) */
+function isExcluded(title: string, keywords: string[]): boolean {
+  const t = title.toLowerCase();
+  return keywords.some((k) => k.trim() && t.includes(k.trim().toLowerCase()));
+}
 
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -88,6 +100,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
   const [view, setView] = useState<ViewPrefs>(() => readLocal(VIEW_KEY, DEFAULT_VIEW));
   const [query, setQuery] = useState('');
   const [purge, setPurge] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => writeLocal(VIEW_KEY, view), [view]);
   useEffect(() => {
@@ -106,16 +119,31 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
   const jobs = useJobs(onJobFinished);
   const activeJob = (jobs.data ?? []).find((j) => (j.categoryId === active?.id || j.categoryId == null) && (j.status === 'queued' || j.status === 'running'));
 
+  const basis = active?.unitBasis ?? 'kg';
+  const { visible: allVisible, excludedCount } = useMemo(() => {
+    const ex = active?.excludeKeywords ?? [];
+    const list = products.data ?? [];
+    const visible = ex.length ? list.filter((p) => !isExcluded(p.effective.title, ex)) : list;
+    return { visible, excludedCount: list.length - visible.length };
+  }, [products.data, active?.excludeKeywords]);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = (products.data ?? []).filter(
-      (p) =>
+    const filtered = allVisible.filter((p) => {
+      const ord = isOrderable(p);
+      const cutoffHour = p.orderCutoff ? Number(p.orderCutoff.slice(0, 2)) : null;
+      return (
         (view.source === 'all' || p.source === view.source) &&
         (view.status === 'all' || p.sourceStatus === view.status) &&
-        (!q || p.effective.title.toLowerCase().includes(q) || (p.effective.seller ?? '').toLowerCase().includes(q)),
-    );
-    return sortProducts(filtered, view.sort);
-  }, [products.data, view, query]);
+        (view.order === 'all' || (view.order === 'orderable' ? ord === true : ord === false)) &&
+        (view.cutoffAfter === 'all' || (cutoffHour != null && cutoffHour >= Number(view.cutoffAfter))) &&
+        (view.leadWithin === 'all' || (p.deliveryLeadDays != null && p.deliveryLeadDays <= Number(view.leadWithin))) &&
+        (!q || p.effective.title.toLowerCase().includes(q) || (p.effective.seller ?? '').toLowerCase().includes(q))
+      );
+    });
+    return sortProducts(filtered, view.sort, basis);
+  }, [allVisible, view, query, basis]);
+  const filtersActive = view.order !== 'all' || view.cutoffAfter !== 'all' || view.leadWithin !== 'all' || view.source !== 'all' || view.status !== 'all' || !!query;
 
   const fail = (e: unknown) => toast('error', (e as Error).message || '요청을 처리하지 못했습니다.');
 
@@ -131,12 +159,16 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
 
   const exportCategoryCsv = () => {
     if (!active) return;
-    const header = ['상품명', '판매처', '판매자', '옵션', '중량 원문', '총중량(kg)', '정상가', '할인가', '쿠폰가', '쿠폰 적용 가능', '최저 유효가', '적용 가격', '가격/중량(원/kg)', '택배비 상태', '택배비', '최종 확인(KST)', '상태', 'URL'];
-    const data = rows.map((p) => [
-      p.effective.title, SOURCE_LABEL[p.source], p.effective.seller, p.effective.productOption, p.effective.rawWeightText, p.effective.weightKg,
-      p.effective.regularPriceKrw, p.effective.salePriceKrw, p.effective.couponPriceKrw, p.effective.couponEligible, p.effectivePriceKrw,
-      p.effectivePriceKind, p.unitPriceKrwPerKg, p.effective.shippingStatus, p.effective.shippingPriceKrw, formatKst(p.lastSuccessAt), p.sourceStatus, p.effective.sourceUrl,
-    ]);
+    const header = ['상품명', '주문', '주문 불가 사유', '주문 마감', '예상 배송', '중량 원문', '총중량(kg)', '개수', '정상가', '할인가', '쿠폰가', '쿠폰 적용 가능', '최저 유효가', '적용 가격', `단가(원/${basis === 'piece' ? active.pieceLabel : 'kg'})`, '배송비 상태', '배송비', '무료배송 기준', '상태', '판매처', '판매자', 'URL'];
+    const data = rows.map((p) => {
+      const ord = isOrderable(p);
+      return [
+        p.effective.title, ord == null ? '' : ord ? '가능' : '불가', p.orderStatusReason, p.orderCutoff, p.deliveryNote, p.effective.rawWeightText, p.effective.weightKg,
+        p.effective.pieceCount, p.effective.regularPriceKrw, p.effective.salePriceKrw, p.effective.couponPriceKrw, p.effective.couponEligible, p.effectivePriceKrw,
+        p.effectivePriceKind, unitOf(p, basis), p.effective.shippingStatus, p.effective.shippingPriceKrw, p.shippingFreeThresholdKrw, p.sourceStatus,
+        SOURCE_LABEL[p.source], p.effective.seller, p.effective.sourceUrl,
+      ];
+    });
     downloadText(`${active.name}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(header, data));
   };
 
@@ -212,22 +244,46 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
         </div>
       </header>
 
-      {cats.isLoading ? (
-        <SkeletonRows rows={2} />
-      ) : (
-        <CategoryTabs
-          categories={categories}
-          activeId={active?.id ?? null}
-          onSelect={setActiveId}
-          onReorder={(ids) => mut.reorderCategories.mutate(ids, { onError: fail })}
-          onAdd={() => setDialog({ kind: 'category', category: null })}
-        />
+      {/* 모바일: 현재 품목 + 목록 열기 버튼 */}
+      <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
+        <button className="btn-secondary" onClick={() => setNavOpen(true)} aria-label="품목 목록 열기">
+          <MenuIcon size={15} /> {active?.name ?? '품목'}
+        </button>
+        <span className="text-xs text-slate-500">품목 {categories.length}개</span>
+      </div>
+      {navOpen && (
+        <Drawer open onClose={() => setNavOpen(false)} title="품목" width="max-w-xs">
+          <CategorySidebar
+            categories={categories}
+            activeId={active?.id ?? null}
+            onSelect={(id) => (setActiveId(id), setNavOpen(false))}
+            onReorder={(ids) => mut.reorderCategories.mutate(ids, { onError: fail })}
+            onAdd={() => (setNavOpen(false), setDialog({ kind: 'category', category: null }))}
+          />
+        </Drawer>
       )}
 
-      <main className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6">
+      <div className="mx-auto flex max-w-[1600px] gap-6 px-4 py-5 sm:px-6">
+        <aside className="hidden w-52 shrink-0 lg:block">
+          <div className="sticky top-4">
+            {cats.isLoading ? (
+              <SkeletonRows rows={4} />
+            ) : (
+              <CategorySidebar
+                categories={categories}
+                activeId={active?.id ?? null}
+                onSelect={setActiveId}
+                onReorder={(ids) => mut.reorderCategories.mutate(ids, { onError: fail })}
+                onAdd={() => setDialog({ kind: 'category', category: null })}
+              />
+            )}
+          </div>
+        </aside>
+
+      <main className="min-w-0 flex-1">
         {!cats.isLoading && categories.length === 0 && (
           <div className="card">
-            <EmptyState icon={<PackageSearch size={20} />} title="품목 탭이 없습니다">
+            <EmptyState icon={<PackageSearch size={20} />} title="품목이 없습니다">
               <button className="btn-primary mt-3" onClick={() => setDialog({ kind: 'category', category: null })}>
                 <Plus size={15} /> 품목 추가
               </button>
@@ -241,7 +297,8 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-bold tracking-tight">{active.name}</h2>
-                  <span className="num text-sm text-slate-500">· 상품 {products.data?.length ?? 0}개</span>
+                  <span className="num text-sm text-slate-500">· 상품 {allVisible.length}개</span>
+                  {basis === 'piece' && <span className="chip bg-slate-100 text-slate-600">원/{active.pieceLabel} 기준</span>}
                   <JobBadge status={activeJob?.status ?? active.lastJobStatus} />
                 </div>
                 <p className="num mt-1 text-[13px] text-slate-500">
@@ -252,7 +309,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="btn-secondary" onClick={() => setDialog({ kind: 'category', category: active })}>
-                  <Search size={15} /> 검색어 관리
+                  <Settings2 size={15} /> 품목 설정
                 </button>
                 <button className="btn-secondary" onClick={() => setDialog({ kind: 'schedule' })}>
                   <CalendarClock size={15} /> 자동 갱신
@@ -298,6 +355,25 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                   <option value="needs_review">검토 필요</option>
                   <option value="manual">수동</option>
                 </select>
+                <select className="input w-auto" value={view.order} onChange={(e) => setView({ ...view, order: e.target.value as ViewPrefs['order'] })} aria-label="주문 가능 여부 필터">
+                  <option value="all">주문: 전체</option>
+                  <option value="orderable">주문 가능</option>
+                  <option value="not_orderable">주문 불가</option>
+                </select>
+                <select className="input w-auto" value={view.cutoffAfter} onChange={(e) => setView({ ...view, cutoffAfter: e.target.value as ViewPrefs['cutoffAfter'] })} aria-label="주문 마감 시간 필터">
+                  <option value="all">마감: 전체</option>
+                  <option value="12">12시 이후 마감</option>
+                  <option value="15">15시 이후 마감</option>
+                  <option value="18">18시 이후 마감</option>
+                  <option value="21">21시 이후 마감</option>
+                </select>
+                <select className="input w-auto" value={view.leadWithin} onChange={(e) => setView({ ...view, leadWithin: e.target.value as ViewPrefs['leadWithin'] })} aria-label="예상 배송 기간 필터">
+                  <option value="all">배송: 전체</option>
+                  <option value="0">당일 도착</option>
+                  <option value="1">D+1 이내</option>
+                  <option value="2">D+2 이내</option>
+                  <option value="3">D+3 이내</option>
+                </select>
                 <select className="input w-auto" value={view.sort} onChange={(e) => setView({ ...view, sort: e.target.value as SortMode })} aria-label="정렬">
                   {(Object.keys(SORT_LABEL) as SortMode[]).map((s) => (
                     <option key={s} value={s}>
@@ -305,8 +381,13 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                     </option>
                   ))}
                 </select>
-                <div className="ml-auto">
-                  <Segmented<UnitBasis>
+                {filtersActive && (
+                  <button className="btn-ghost btn-sm" onClick={() => (setView({ ...DEFAULT_VIEW, sort: view.sort, basis: view.basis }), setQuery(''))}>
+                    필터 초기화
+                  </button>
+                )}
+                <div className={basis === 'piece' ? 'hidden' : 'ml-auto'}>
+                  <Segmented<UnitView>
                     size="xs"
                     label="단가 단위"
                     value={view.basis}
@@ -324,7 +405,7 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
                 <p role="alert" className="p-4 text-sm text-red-600">
                   상품을 불러오지 못했습니다: {(products.error as Error).message}
                 </p>
-              ) : (products.data ?? []).length === 0 ? (
+              ) : allVisible.length === 0 && excludedCount === 0 ? (
                 <EmptyState icon={<PackageSearch size={20} />} title="아직 수집한 상품이 없습니다">
                   ‘이 탭 갱신’으로 수집을 요청하거나 ‘+ 상품 추가’로 직접 등록하세요. 검색어: {active.keywords.join(', ') || active.name}
                 </EmptyState>
@@ -333,19 +414,28 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
               ) : (
                 <ProductTable
                   rows={rows}
-                  basis={view.basis}
+                  category={active}
+                  view={view.basis}
                   onHistory={(p) => setDialog({ kind: 'history', product: p })}
                   onEdit={(p) => setDialog({ kind: 'edit', product: p })}
                   onDelete={(p) => setDialog({ kind: 'deleteProduct', product: p })}
                 />
               )}
             </div>
-            <p className="mt-2 text-[12px] leading-5 text-slate-500">
-              * 가격/중량 = 정상가·할인가·<b>적용 가능이 확인된</b> 쿠폰가 중 최저가 ÷ 총중량. 택배비·최소구매금액은 포함하지 않습니다. 값이 없으면 ‘-’로 표시하며, 가격은 방문 시점에 달라질 수 있으니 최종 확인 시각과 원본 링크를 확인하세요.
-            </p>
+            <div className="mt-2 space-y-1 text-[12px] leading-5 text-slate-500">
+              {excludedCount > 0 && (
+                <p>
+                  제외 키워드({active.excludeKeywords.join(', ')})에 해당하는 상품 {excludedCount}개를 숨겼습니다. 다음 갱신부터는 수집하지 않습니다.
+                </p>
+              )}
+              <p>
+                * 단가 = 정상가·할인가·<b>적용 가능한</b> 쿠폰가 중 최저가 ÷ {basis === 'piece' ? `개수(${active.pieceLabel})` : '총중량'}. 배송비·최소구매금액은 포함하지 않습니다. 주문 가능 여부와 마감은 마지막 갱신 시각 기준이며, 값이 없으면 ‘-’로 표시합니다.
+              </p>
+            </div>
           </>
         )}
       </main>
+      </div>
 
       {dialog.kind === 'category' && (
         <CategoryModal
@@ -369,8 +459,8 @@ export function Dashboard({ userEmail, onSignOut, onExitDemo }: { userEmail: str
       )}
       {dialog.kind === 'schedule' && active && <ScheduleDialog category={active} onClose={close} />}
       {dialog.kind === 'edit' && <ProductEditDrawer open product={dialog.product} busy={mut.addProduct.isPending || mut.saveEdit.isPending} onSave={onSaveProduct} onClose={close} />}
-      {dialog.kind === 'history' && <ProductPriceHistoryDrawer product={(products.data ?? []).find((p) => p.id === dialog.product.id) ?? dialog.product} onClose={close} />}
-      {dialog.kind === 'compare' && active && <CategoryPriceComparison category={active} products={sortProducts(products.data ?? [], 'unit_asc')} onClose={close} />}
+      {dialog.kind === 'history' && <ProductPriceHistoryDrawer product={(products.data ?? []).find((p) => p.id === dialog.product.id) ?? dialog.product} category={active!} onClose={close} />}
+      {dialog.kind === 'compare' && active && <CategoryPriceComparison category={active} products={sortProducts(allVisible, 'unit_asc', basis)} onClose={close} />}
       {dialog.kind === 'logs' && <CrawlLogDrawer categories={categories} onClose={close} />}
       {dialog.kind === 'deleted' && <DeletedItemsDrawer category={active} onClose={close} />}
       {dialog.kind === 'import' && <ImportCsvModal open busy={mut.addProduct.isPending} onImport={onImport} onClose={close} />}

@@ -9,6 +9,10 @@ export type PriceKind = 'regular' | 'sale' | 'coupon';
 export type JobStatus = 'queued' | 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
 export type ObservationOrigin = 'crawl' | 'manual_edit';
 export type RangeKey = '7d' | '30d' | '90d' | '1y' | 'all';
+/** 품목별 단가 기준: kg(원/kg) 또는 개수(원/알·원/입 등) */
+export type UnitBasis = 'kg' | 'piece';
+/** 주문 가능 상태. closed = 판매자 주문 마감 시각이 탭 갱신 시각 기준으로 지남 */
+export type OrderStatus = 'orderable' | 'discontinued' | 'sold_out' | 'closed' | 'unknown';
 export type SortMode = 'unit_asc' | 'unit_desc' | 'best_asc' | 'recent';
 
 /** 제공처 연동 상태 (명세 3.5) */
@@ -31,6 +35,12 @@ export interface Category {
   enabledSources: CrawlSource[];
   /** 관리자가 등록한 상품 URL (식봄 상세 페이지 추적) */
   trackedUrls: string[];
+  /** 상품명에 포함되면 수집·표시에서 제외할 키워드 */
+  excludeKeywords: string[];
+  unitBasis: UnitBasis;
+  /** 개수 단위 이름 (개·알·입·구·포기·단) */
+  pieceLabel: string;
+  showPieceCount: boolean;
   deletedAt: string | null;
   createdAt: string;
   lastSuccessAt: string | null;
@@ -62,6 +72,7 @@ export interface EditableFields {
   sourceUrl: string;
   rawWeightText: string | null;
   weightKg: number | null;
+  pieceCount: number | null;
   regularPriceKrw: number | null;
   salePriceKrw: number | null;
   couponPriceKrw: number | null;
@@ -95,6 +106,17 @@ export interface ProductRow {
   effectivePriceKrw: number | null;
   effectivePriceKind: PriceKind | null;
   unitPriceKrwPerKg: number | null;
+  unitPriceKrwPerPiece: number | null;
+  /** 수집된 개수 단위(입·구·알 등) */
+  pieceLabel: string | null;
+  orderStatus: OrderStatus;
+  orderStatusReason: string | null;
+  /** 판매자 주문 마감 시각 'HH:mm' (KST) */
+  orderCutoff: string | null;
+  /** 주문 후 도착까지 일수 (D+n) */
+  deliveryLeadDays: number | null;
+  deliveryNote: string | null;
+  shippingFreeThresholdKrw: number | null;
   sourceStatus: ProductSourceStatus;
   extractionStatus: ExtractionStatus;
   reviewNotes: string[];
@@ -109,9 +131,11 @@ export interface PriceSnapshot {
   couponPriceKrw: number | null;
   couponEligible: boolean | null;
   weightKg: number | null;
+  pieceCount: number | null;
   bestPriceKrw: number | null;
   bestPriceKind: PriceKind | null;
   unitPriceKrwPerKg: number | null;
+  unitPriceKrwPerPiece: number | null;
 }
 
 export interface PriceObservation {

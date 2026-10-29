@@ -15,6 +15,7 @@ const EMPTY: EditableFields = {
   sourceUrl: '',
   rawWeightText: null,
   weightKg: null,
+  pieceCount: null,
   regularPriceKrw: null,
   salePriceKrw: null,
   couponPriceKrw: null,
@@ -86,6 +87,7 @@ export function ProductEditDrawer({
     if (!form.title.trim()) return setError('상품명을 입력하세요.');
     if (!/^https?:\/\//.test(form.sourceUrl)) return setError('상품 URL 은 http(s):// 로 시작해야 합니다.');
     if (form.weightKg != null && !(form.weightKg > 0)) return setError('총중량은 0보다 커야 합니다. 모르면 비워 두세요.');
+    if (form.pieceCount != null && !(form.pieceCount > 0)) return setError('개수는 0보다 커야 합니다. 모르면 비워 두세요.');
     if (form.shippingStatus !== 'paid' && form.shippingPriceKrw != null) return setError('택배비 금액은 ‘유료’일 때만 입력할 수 있습니다.');
     const changes: Partial<Record<EditableField, FieldChange>> = {};
     for (const f of changedFields) changes[f] = { value: form[f], locked: locks[f] ?? true };
@@ -181,8 +183,9 @@ export function ProductEditDrawer({
           <div className="text-[11px] text-slate-500">{preview.kind ? `${PRICE_KIND_LABEL[preview.kind]} 기준` : ''}</div>
         </div>
         <div>
-          <div className="text-slate-500">가격/중량</div>
+          <div className="text-slate-500">단가</div>
           <div className="num mt-0.5 text-[15px] font-semibold text-accent-800">{formatUnitPrice(preview.unitPriceKrwPerKg)}</div>
+          {preview.unitPriceKrwPerPiece != null && <div className="num text-[12px] text-slate-600">개당 {formatKrw(preview.unitPriceKrwPerPiece)}</div>}
         </div>
         <div className="text-[11px] leading-4 text-slate-500">
           배송비는 단가에 포함하지 않습니다.
@@ -229,6 +232,21 @@ export function ProductEditDrawer({
             }}
           />,
         )}
+        {fieldRow(
+          'pieceCount',
+          <input
+            id="f-pieceCount"
+            inputMode="numeric"
+            className="input num text-right"
+            placeholder="-"
+            value={form.pieceCount ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              set('pieceCount', v === '' ? null : Number(v));
+            }}
+          />,
+        )}
+        <div className="hidden sm:block" />
         {fieldRow('regularPriceKrw', priceInput('regularPriceKrw'))}
         {fieldRow('salePriceKrw', priceInput('salePriceKrw'))}
         {fieldRow('couponPriceKrw', priceInput('couponPriceKrw'))}

@@ -25,9 +25,25 @@ def test_option_missing_uses_title_weight():
     assert kg == 1 and notes == []
 
 
-def test_ambiguous_title_blocks_option_weight():
+def test_approx_title_range_containing_option_uses_option_weight():
+    # Q13 양파: 상품명은 '14~15kg내외' 근사 표기지만 옵션 규격 15KG 가 범위 안 → 15kg 로 단가 계산
     kg, _, notes = combine_weight("15KG", "양파 (개당250g내외, 14~15kg내외/망)")
+    assert kg == 15 and notes
+
+
+def test_approx_title_range_not_containing_option_is_rejected():
+    kg, _, notes = combine_weight("5KG", "양파 14~15kg 내외/망")
     assert kg is None and notes
+
+
+def test_small_approx_is_piece_size_not_total():
+    kg, _, _ = combine_weight("1.8KG", "계란 특란 30구 (60g이상)")
+    assert kg == 1.8
+
+
+def test_approx_option_weight_is_rejected():
+    kg, _, _ = combine_weight("약 8kg", "배추(3입,겉잎포함,특,8kg내외망,국산)")
+    assert kg is None
 
 
 def test_ml_is_not_converted():

@@ -54,7 +54,7 @@ interface DemoState {
   audit: Array<{ at: string; entity: string; id: string; action: string; before: unknown; after: unknown }>;
 }
 
-const STORAGE_KEY = 'fpr-demo-v1';
+const STORAGE_KEY = 'fpr-demo-v2';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 const nowIso = () => new Date().toISOString();
 const kst = (d: string) => new Date(`${d}+09:00`).toISOString();
@@ -67,9 +67,11 @@ function snapshotOf(fields: EditableFields): PriceSnapshot {
     couponPriceKrw: fields.couponPriceKrw,
     couponEligible: fields.couponEligible,
     weightKg: fields.weightKg,
+    pieceCount: fields.pieceCount,
     bestPriceKrw: d.bestPriceKrw,
     bestPriceKind: d.kind,
     unitPriceKrwPerKg: d.unitPriceKrwPerKg,
+    unitPriceKrwPerPiece: d.unitPriceKrwPerPiece,
   };
 }
 
@@ -80,6 +82,7 @@ function fields(p: Partial<EditableFields> & { title: string }): EditableFields 
     sourceUrl: 'https://example.invalid/demo',
     rawWeightText: null,
     weightKg: null,
+    pieceCount: null,
     regularPriceKrw: null,
     salePriceKrw: null,
     couponPriceKrw: null,
@@ -98,8 +101,8 @@ function seed(): DemoState {
   const s: DemoState = {
     version: 1,
     categories: [
-      { id: garlic, name: '마늘', sortOrder: 1, keywords: ['깐마늘', '통마늘', '마늘 1kg'], enabledSources: ['foodspring'], trackedUrls: [], deletedAt: null, createdAt: kst('2026-09-30T09:00:00') },
-      { id: cabbage, name: '배추', sortOrder: 2, keywords: ['배추', '절임배추'], enabledSources: ['foodspring'], trackedUrls: [], deletedAt: null, createdAt: kst('2026-09-30T09:00:00') },
+      { id: garlic, name: '마늘', sortOrder: 1, keywords: ['깐마늘', '통마늘', '마늘 1kg'], enabledSources: ['foodspring'], trackedUrls: [], excludeKeywords: [], unitBasis: 'kg', pieceLabel: '개', showPieceCount: false, deletedAt: null, createdAt: kst('2026-09-30T09:00:00') },
+      { id: cabbage, name: '배추', sortOrder: 2, keywords: ['배추', '절임배추'], enabledSources: ['foodspring'], trackedUrls: [], excludeKeywords: [], unitBasis: 'kg', pieceLabel: '개', showPieceCount: false, deletedAt: null, createdAt: kst('2026-09-30T09:00:00') },
     ],
     schedules: {
       [garlic]: { categoryId: garlic, enabled: true, timezone: 'Asia/Seoul', frequency: 'daily', daysOfWeek: [], timesOfDay: ['08:30'], intervalHours: null, nextDueAt: null, lastCompletedSlot: null },
@@ -221,6 +224,14 @@ export class DemoRepo implements Repo {
       effectivePriceKrw: d.bestPriceKrw,
       effectivePriceKind: d.kind,
       unitPriceKrwPerKg: d.unitPriceKrwPerKg,
+      unitPriceKrwPerPiece: d.unitPriceKrwPerPiece,
+      pieceLabel: null,
+      orderStatus: 'unknown',
+      orderStatusReason: null,
+      orderCutoff: null,
+      deliveryLeadDays: null,
+      deliveryNote: null,
+      shippingFreeThresholdKrw: null,
       sourceStatus: p.sourceStatus,
       extractionStatus: p.extractionStatus,
       reviewNotes: [...p.reviewNotes, ...d.warnings.map((w) => (w === 'coupon_excluded' ? '쿠폰 조건 미확인 → 최저가 제외' : '할인가 > 정상가 표기'))],
@@ -268,7 +279,7 @@ export class DemoRepo implements Repo {
 
   async createCategory(input: CategoryInput) {
     if (this.s.categories.some((c) => !c.deletedAt && c.name === input.name.trim())) throw new Error('같은 이름의 품목 탭이 이미 있습니다.');
-    const c = { id: uid(), name: input.name.trim(), sortOrder: this.s.categories.length + 1, keywords: input.keywords, enabledSources: input.enabledSources, trackedUrls: input.trackedUrls, deletedAt: null, createdAt: nowIso() };
+    const c = { id: uid(), name: input.name.trim(), sortOrder: this.s.categories.length + 1, keywords: input.keywords, enabledSources: input.enabledSources, trackedUrls: input.trackedUrls, excludeKeywords: input.excludeKeywords, unitBasis: input.unitBasis, pieceLabel: input.pieceLabel, showPieceCount: input.showPieceCount, deletedAt: null, createdAt: nowIso() };
     this.s.categories.push(c);
     this.s.schedules[c.id] = { categoryId: c.id, enabled: false, timezone: 'Asia/Seoul', frequency: 'daily', daysOfWeek: [], timesOfDay: [], intervalHours: null, nextDueAt: null, lastCompletedSlot: null };
     return this.done({ ...c, lastSuccessAt: null, lastJobStatus: null, lastJobRequestedAt: null });

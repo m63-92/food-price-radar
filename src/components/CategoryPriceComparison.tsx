@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from 'recharts';
 import type { Category, ChartPreferences, ProductRow, RangeKey } from '../types';
 import { AXIS, krwTick, niceScale, seriesStyle } from '../lib/chartColors';
-import { formatPct, formatUnitPrice } from '../lib/domain/format';
+import { formatPct } from '../lib/domain/format';
+import { formatUnit, unitOf, unitSuffix } from '../lib/domain/units';
 import { buildComparison, defaultComparisonSelection, RANGE_LABEL, summarize } from '../lib/domain/history';
 import { formatWeightKg } from '../lib/domain/weight';
 import { useChartPrefs, useComparison, useMutations } from '../lib/queries';
@@ -13,6 +14,8 @@ const RANGES: RangeKey[] = ['7d', '30d', '90d', '1y', 'all'];
 const MAX = 10;
 
 export function CategoryPriceComparison({ category, products, onClose }: { category: Category; products: ProductRow[]; onClose: () => void }) {
+  const basis = category.unitBasis;
+  const formatUnitPrice = (v: number | null | undefined) => formatUnit(v, basis, category.pieceLabel);
   const prefsQ = useChartPrefs(category.id);
   const { savePrefs } = useMutations();
   const [prefs, setPrefs] = useState<ChartPreferences | null>(null);
@@ -28,12 +31,12 @@ export function CategoryPriceComparison({ category, products, onClose }: { categ
     const selected = saved?.selectedProductIds.filter((id) => alive.has(id)) ?? [];
     setPrefs({
       categoryId: category.id,
-      selectedProductIds: selected.length ? selected : defaultComparisonSelection(products),
+      selectedProductIds: selected.length ? selected : defaultComparisonSelection(products.map((p) => ({ id: p.id, unitPriceKrwPerKg: unitOf(p, basis) }))),
       range: saved?.range ?? '30d',
       seriesVisibility: saved?.seriesVisibility ?? {},
       carryForward: saved?.carryForward ?? false,
     });
-  }, [prefsQ.isLoading, prefsQ.data, products, category.id]);
+  }, [prefsQ.isLoading, prefsQ.data, products, category.id, basis]);
 
   // 변경 시 DB 에 저장 (로그아웃·다른 기기에서도 유지)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -50,7 +53,7 @@ export function CategoryPriceComparison({ category, products, onClose }: { categ
   const range = prefs?.range ?? '30d';
   const comp = useComparison(category.id, ids, range);
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
-  const { rows, insufficient } = useMemo(() => buildComparison(comp.data ?? {}, range, Date.now()), [comp.data, range]);
+  const { rows, insufficient } = useMemo(() => buildComparison(comp.data ?? {}, range, Date.now(), 'effective', basis), [comp.data, range, basis]);
   const visible = (id: string) => prefs?.seriesVisibility[id] !== false;
 
   const chartData = useMemo(
@@ -114,7 +117,7 @@ export function CategoryPriceComparison({ category, products, onClose }: { categ
   }
 
   return (
-    <Drawer open onClose={onClose} width="max-w-5xl" title={`${category.name} · 상품 간 가격 추이 비교`} subtitle="모든 상품을 같은 기준(원/kg, 배송비 제외)으로 비교합니다. 옵션·중량이 서로 다를 수 있으니 범례를 확인하세요.">
+    <Drawer open onClose={onClose} width="max-w-5xl" title={`${category.name} · 상품 간 가격 추이 비교`} subtitle="모든 상품을 같은 단가 기준(배송비 제외)으로 비교합니다. 갱신에 성공할 때마다 기록이 쌓이고, 날짜별로 그날 마지막 기록을 씁니다. 옵션·중량이 서로 다를 수 있으니 범례를 확인하세요.">
       {!prefs ? (
         <SkeletonRows rows={6} />
       ) : products.length === 0 ? (
@@ -168,7 +171,7 @@ export function CategoryPriceComparison({ category, products, onClose }: { categ
               </div>
             ) : (
               <div>
-                <div className="mb-1 text-xs font-semibold text-slate-600">가격/중량 · 단위 원/kg (배송비 제외, 날짜는 KST)</div>
+                <div className="mb-1 text-xs font-semibold text-slate-600">단가 · 단위 원/{unitSuffix(basis, category.pieceLabel)} (배송비 제외, 날짜는 KST)</div>
                 <div className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
@@ -269,7 +272,7 @@ export function CategoryPriceComparison({ category, products, onClose }: { categ
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-slate-800">{p.effective.title}</span>
                         <span className="num text-slate-500">
-                          {SOURCE_LABEL[p.source]} · {formatUnitPrice(p.unitPriceKrwPerKg)}
+                          {SOURCE_LABEL[p.source]} · {formatUnitPrice(unitOf(p, basis))}
                         </span>
                       </span>
                     </label>

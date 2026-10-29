@@ -303,6 +303,64 @@ await test('탭 소프트 삭제는 이력 보존, 명시적 purge 에서만 이
   assert.equal(purged.rows[0].n, 0);
 });
 
+await test('v2: 제외 키워드가 상품명에 있으면 수집하지 않음', async () => {
+  await user(U1, `update categories set exclude_keywords = '{냉동}' where id = $1`, [catId]);
+  const run = (await service(`insert into crawl_runs (owner_id, category_id, source) values ('${U1}', $1, 'foodspring') returning id`, [catId])).rows[0].id;
+  const r = await service(`select fpr_ingest_listing($1, $2, $3::jsonb) as res`, [run, catId, JSON.stringify(listing({ source_product_id: 'frozen-1', title: '냉동 알마늘 1kg' }))]);
+  assert.equal(r.rows[0].res.status, 'excluded');
+  await user(U1, `update categories set exclude_keywords = '{}' where id = $1`, [catId]);
+});
+
+await test('v2: 개수·개당 단가, 주문 가능/마감/배송 정보 저장', async () => {
+  const run = (await service(`insert into crawl_runs (owner_id, category_id, source) values ('${U1}', $1, 'foodspring') returning id`, [catId])).rows[0].id;
+  const r = await service(`select fpr_ingest_listing($1, $2, $3::jsonb) as res`, [
+    run,
+    catId,
+    JSON.stringify(
+      listing({
+        source_product_id: 'egg-30',
+        title: '계란 특란 30구',
+        weight_kg: null,
+        piece_count: 30,
+        piece_label: '구',
+        regular_price_krw: 9000,
+        sale_price_krw: 7500,
+        coupon_price_krw: 7200,
+        coupon_eligible: true,
+        shipping_price_krw: 10000,
+        shipping_free_threshold_krw: 100000,
+        order_status: 'closed',
+        order_status_reason: '주문 마감(16:00)',
+        order_cutoff: '16:00',
+        delivery_lead_days: 1,
+        delivery_note: 'D+1 · 월~토',
+      }),
+    ),
+  ]);
+  const row = (await user(U1, `select * from product_rows where id = $1`, [r.rows[0].res.product_id])).rows[0];
+  assert.equal(Number(row.piece_count), 30);
+  assert.equal(row.piece_label, '구');
+  assert.equal(Number(row.unit_price_krw_per_piece), 240);
+  assert.equal(row.unit_price_krw_per_kg, null);
+  assert.equal(row.order_status, 'closed');
+  assert.equal(row.order_cutoff, '16:00');
+  assert.equal(row.delivery_lead_days, 1);
+  assert.equal(row.shipping_free_threshold_krw, 100000);
+  const o = await user(U1, `select effective_unit_price_krw_per_piece, order_status from price_observations where product_id = $1`, [row.id]);
+  assert.equal(Number(o.rows[0].effective_unit_price_krw_per_piece), 240);
+  // 개수 수동 수정(고정) → 개당 단가 재계산
+  await user(U1, `select fpr_save_product_edit($1, $2::jsonb)`, [row.id, JSON.stringify({ piece_count: { value: 15, locked: true } })]);
+  const after = (await user(U1, `select unit_price_krw_per_piece from product_rows where id = $1`, [row.id])).rows[0];
+  assert.equal(Number(after.unit_price_krw_per_piece), 480);
+});
+
+await test('v2: 품목 단가 기준·개수 설정 저장', async () => {
+  await user(U1, `update categories set unit_basis = 'piece', piece_label = '알', show_piece_count = true where id = $1`, [catId]);
+  const c = (await user(U1, `select unit_basis, piece_label, show_piece_count from category_overview where id = $1`, [catId])).rows[0];
+  assert.deepEqual(c, { unit_basis: 'piece', piece_label: '알', show_piece_count: true });
+  await assert.rejects(user(U1, `update categories set unit_basis = 'liter' where id = $1`, [catId]));
+});
+
 await test('감사 로그에 수정 전/후 값 기록', async () => {
   const r = await user(U1, `select action, before_json, after_json from audit_logs where entity_type = 'product' and action = 'edit' order by id limit 1`);
   assert.equal(r.rows[0].before_json.sale_price_krw, 8000);

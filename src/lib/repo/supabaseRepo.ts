@@ -36,6 +36,10 @@ function mapCategory(r: Row): Category {
     keywords: r.keywords ?? [],
     enabledSources: r.enabled_sources ?? [],
     trackedUrls: r.tracked_urls ?? [],
+    excludeKeywords: r.exclude_keywords ?? [],
+    unitBasis: r.unit_basis ?? 'kg',
+    pieceLabel: r.piece_label ?? '개',
+    showPieceCount: r.show_piece_count ?? false,
     deletedAt: r.deleted_at,
     createdAt: r.created_at,
     lastSuccessAt: r.last_success_at ?? null,
@@ -53,6 +57,7 @@ function mapProduct(r: Row): ProductRow {
     sourceUrl: m.source_url ?? r.source_url,
     rawWeightText: m.raw_weight_text ?? null,
     weightKg: num(m.weight_kg),
+    pieceCount: num(m.piece_count),
     regularPriceKrw: r.raw_regular_price_krw,
     salePriceKrw: r.raw_sale_price_krw,
     couponPriceKrw: r.raw_coupon_price_krw,
@@ -69,6 +74,7 @@ function mapProduct(r: Row): ProductRow {
     sourceUrl: r.source_url,
     rawWeightText: r.raw_weight_text,
     weightKg: num(r.weight_kg),
+    pieceCount: num(r.piece_count),
     regularPriceKrw: r.regular_price_krw,
     salePriceKrw: r.sale_price_krw,
     couponPriceKrw: r.coupon_price_krw,
@@ -96,6 +102,14 @@ function mapProduct(r: Row): ProductRow {
     effectivePriceKrw: r.effective_price_krw,
     effectivePriceKind: r.effective_price_kind as PriceKind | null,
     unitPriceKrwPerKg: num(r.unit_price_krw_per_kg),
+    unitPriceKrwPerPiece: num(r.unit_price_krw_per_piece),
+    pieceLabel: r.piece_label ?? null,
+    orderStatus: r.order_status ?? 'unknown',
+    orderStatusReason: r.order_status_reason ?? null,
+    orderCutoff: r.order_cutoff ?? null,
+    deliveryLeadDays: r.delivery_lead_days ?? null,
+    deliveryNote: r.delivery_note ?? null,
+    shippingFreeThresholdKrw: r.shipping_free_threshold_krw ?? null,
     sourceStatus: r.source_status,
     extractionStatus: r.extraction_status,
     reviewNotes: r.review_notes ?? [],
@@ -118,9 +132,11 @@ function mapObservation(r: Row): PriceObservation {
       couponPriceKrw: r.raw_coupon_price_krw,
       couponEligible: r.raw_coupon_eligible,
       weightKg: num(r.raw_weight_kg),
+      pieceCount: num(r.raw_piece_count),
       bestPriceKrw: r.raw_best_price_krw,
       bestPriceKind: r.raw_best_price_kind,
       unitPriceKrwPerKg: num(r.raw_unit_price_krw_per_kg),
+      unitPriceKrwPerPiece: num(r.raw_unit_price_krw_per_piece),
     },
     effective: {
       regularPriceKrw: r.regular_price_krw,
@@ -128,9 +144,11 @@ function mapObservation(r: Row): PriceObservation {
       couponPriceKrw: r.coupon_price_krw,
       couponEligible: r.coupon_eligible,
       weightKg: num(r.effective_weight_kg),
+      pieceCount: num(r.effective_piece_count),
       bestPriceKrw: r.effective_best_price_krw,
       bestPriceKind: r.effective_best_price_kind,
       unitPriceKrwPerKg: num(r.effective_unit_price_krw_per_kg),
+      unitPriceKrwPerPiece: num(r.effective_unit_price_krw_per_piece),
     },
     shippingStatus: r.shipping_status,
     shippingPriceKrw: r.shipping_price_krw,
@@ -190,6 +208,10 @@ export class SupabaseRepo implements Repo {
           keywords: input.keywords,
           enabled_sources: input.enabledSources,
           tracked_urls: input.trackedUrls,
+          exclude_keywords: input.excludeKeywords,
+          unit_basis: input.unitBasis,
+          piece_label: input.pieceLabel,
+          show_piece_count: input.showPieceCount,
           sort_order: existing.length + 1,
         })
         .select()
@@ -204,6 +226,10 @@ export class SupabaseRepo implements Repo {
     if (patch.keywords) body.keywords = patch.keywords;
     if (patch.enabledSources) body.enabled_sources = patch.enabledSources;
     if (patch.trackedUrls) body.tracked_urls = patch.trackedUrls;
+    if (patch.excludeKeywords) body.exclude_keywords = patch.excludeKeywords;
+    if (patch.unitBasis) body.unit_basis = patch.unitBasis;
+    if (patch.pieceLabel) body.piece_label = patch.pieceLabel;
+    if (patch.showPieceCount !== undefined) body.show_piece_count = patch.showPieceCount;
     check(await this.sb.from('categories').update(body).eq('id', id));
   }
 

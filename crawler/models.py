@@ -10,6 +10,7 @@ ShippingStatus = Literal["free", "paid", "unknown"]
 Availability = Literal["in_stock", "out_of_stock", "unknown"]
 ExtractionStatus = Literal["verified", "needs_review", "unavailable"]
 ProviderState = Literal["available", "needs_setup", "temporary_error", "restricted"]
+OrderStatus = Literal["orderable", "discontinued", "sold_out", "closed", "unknown"]
 
 
 @dataclass
@@ -35,6 +36,15 @@ class ListingObservation:
     extraction_status: ExtractionStatus
     review_notes: list[str] = field(default_factory=list)
     parse_confidence: float | None = None
+    # v2: 개수(계란 30구·배추 3입), 주문 가능 여부, 주문 마감, 예상 배송, 무료배송 기준
+    piece_count: int | None = None
+    piece_label: str | None = None
+    order_status: OrderStatus = "unknown"
+    order_status_reason: str | None = None
+    order_cutoff: str | None = None
+    delivery_lead_days: int | None = None
+    delivery_note: str | None = None
+    shipping_free_threshold_krw: int | None = None
 
     def to_rpc(self) -> dict:
         """fpr_ingest_listing 이 받는 snake_case JSON."""

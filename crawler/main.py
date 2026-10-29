@@ -56,6 +56,12 @@ def enqueue_due_schedules(db: Supabase, now: datetime) -> int:
     return n
 
 
+def is_excluded(title: str, exclude: list[str]) -> bool:
+    """SQL fpr_is_excluded 와 같은 규칙: 상품명에 제외 키워드가 하나라도 있으면 제외(대소문자 무시)."""
+    t = (title or "").lower()
+    return any(k in t for k in exclude)
+
+
 def process_category(db: Supabase, adapters: dict[str, SourceAdapter], job: dict, cat: dict) -> tuple[int, int]:
     """반환: (성공 제공처 수, 실패 제공처 수)"""
     ok = failed = 0
@@ -65,12 +71,23 @@ def process_category(db: Supabase, adapters: dict[str, SourceAdapter], job: dict
             continue
         run = db.insert("crawl_runs", {"owner_id": cat["owner_id"], "refresh_job_id": job["id"],
                                        "category_id": cat["id"], "source": source, "status": "running"})
-        collected = changed = item_failed = 0
+        collected = changed = item_failed = excluded = 0
         errors: list[str] = []
+        exclude = [k.strip().lower() for k in cat.get("exclude_keywords") or [] if k.strip()]
         try:
             listings = []
-            for kw in cat.get("keywords") or [cat["name"]]:
-                listings.extend(adapter.search(kw))
+            if isinstance(adapter, FoodspringAdapter):
+                # 검색 결과에서 제외 키워드를 먼저 걸러 상세 페이지 요청을 줄인다
+                adapter.reset_budget()
+                for kw in cat.get("keywords") or [cat["name"]]:
+                    for item in adapter.search_basic(kw):
+                        if is_excluded(item.title, exclude):
+                            excluded += 1
+                            continue
+                        listings.append(adapter.enrich(item))
+            else:
+                for kw in cat.get("keywords") or [cat["name"]]:
+                    listings.extend(adapter.search(kw))
             for url in cat.get("tracked_urls") or []:
                 try:
                     one = adapter.fetch_url(url)
@@ -91,6 +108,8 @@ def process_category(db: Supabase, adapters: dict[str, SourceAdapter], job: dict
                     if status in ("changed", "unchanged", "duplicate"):
                         collected += 1
                         changed += status == "changed"
+                    elif status == "excluded":
+                        excluded += 1
                 except Exception as e:  # 한 건 실패가 나머지를 막지 않도록
                     item_failed += 1
                     errors.append(f"{item.source_url}: {e}")
@@ -103,7 +122,7 @@ def process_category(db: Supabase, adapters: dict[str, SourceAdapter], job: dict
         db.update("crawl_runs", {"id": f"eq.{run['id']}"}, {
             "status": run_status, "finished_at": datetime.now(timezone.utc).isoformat(),
             "collected_count": collected, "changed_count": changed, "failed_count": item_failed,
-            "error_detail": "\n".join(errors)[:4000] or None,
+            "error_detail": "\n".join(errors + ([f"제외 키워드로 {excluded}개 제외"] if excluded else []))[:4000] or None,
         })
         if run_status == "failed":
             failed += 1
@@ -125,7 +144,7 @@ def run(db: Supabase) -> int:
         db.upsert("provider_status", {"source": c.source, "state": c.state, "detail": c.detail,
                                       "updated_at": now.isoformat()}, "source")
 
-    jobs = db.rpc("fpr_claim_jobs", {"p_worker": worker, "p_limit": 20, "p_lock_minutes": 30}) or []
+    jobs = db.rpc("fpr_claim_jobs", {"p_worker": worker, "p_limit": 20, "p_lock_minutes": 60}) or []
     log.info("처리할 작업 %d건", len(jobs))
     for job in jobs:
         try:

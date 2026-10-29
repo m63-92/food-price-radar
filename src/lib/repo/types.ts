@@ -14,6 +14,7 @@ import type {
   RangeKey,
   RefreshJob,
   Source,
+  UnitBasis,
 } from '../../types';
 
 export interface CategoryInput {
@@ -21,6 +22,10 @@ export interface CategoryInput {
   keywords: string[];
   enabledSources: CrawlSource[];
   trackedUrls: string[];
+  excludeKeywords: string[];
+  unitBasis: UnitBasis;
+  pieceLabel: string;
+  showPieceCount: boolean;
 }
 
 export type FieldChange = { value: unknown; locked: boolean };

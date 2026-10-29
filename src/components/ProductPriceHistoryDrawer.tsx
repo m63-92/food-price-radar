@@ -1,7 +1,8 @@
 import { ExternalLink, History, Table2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { ProductRow, RangeKey } from '../types';
-import { formatKrw, formatKst, formatUnitPrice, shippingLabel } from '../lib/domain/format';
+import type { Category, ProductRow, RangeKey } from '../types';
+import { formatKrw, formatKst, shippingLabel } from '../lib/domain/format';
+import { formatUnit, unitOf, unitSuffix } from '../lib/domain/units';
 import { buildHistoryPoints, downsample, getPriceChangeSummary, RANGE_LABEL, type SeriesKey, type SnapshotMode } from '../lib/domain/history';
 import { formatWeightKg } from '../lib/domain/weight';
 import { useChangeEvents, useHistory } from '../lib/queries';
@@ -33,7 +34,9 @@ function readRange(): RangeKey {
   }
 }
 
-export function ProductPriceHistoryDrawer({ product, onClose }: { product: ProductRow; onClose: () => void }) {
+export function ProductPriceHistoryDrawer({ product, category, onClose }: { product: ProductRow; category: Category; onClose: () => void }) {
+  const basis = category.unitBasis;
+  const fmtU = (v: number | null) => formatUnit(v, basis, category.pieceLabel);
   const [range, setRangeState] = useState<RangeKey>(readRange);
   const [mode, setMode] = useState<HistoryDisplayMode>('both');
   const [snapMode, setSnapMode] = useState<SnapshotMode>('effective');
@@ -54,8 +57,8 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
 
   const obs = useMemo(() => history.data ?? [], [history.data]);
   // 이미 기간으로 조회한 데이터이므로 요약은 'all' 로 계산
-  const summary = useMemo(() => getPriceChangeSummary(obs, 'all', Date.now(), snapMode), [obs, snapMode]);
-  const points = useMemo(() => downsample(buildHistoryPoints(obs, snapMode)), [obs, snapMode]);
+  const summary = useMemo(() => getPriceChangeSummary(obs, 'all', Date.now(), snapMode, basis), [obs, snapMode, basis]);
+  const points = useMemo(() => downsample(buildHistoryPoints(obs, snapMode, basis)), [obs, snapMode, basis]);
   const e = product.effective;
 
   const seriesKeys: SeriesKey[] = mode === 'price' ? ['best', 'regular', 'sale', 'coupon'] : mode === 'unit' ? ['unit'] : ['unit', 'best', 'regular', 'sale', 'coupon'];
@@ -77,8 +80,8 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
             중량 {e.rawWeightText ?? '-'} ({formatWeightKg(e.weightKg)})
           </span>
           {e.productOption && <span>옵션 {e.productOption}</span>}
-          <span>현재 {formatUnitPrice(product.unitPriceKrwPerKg)}</span>
-          <span>택배비 {shippingLabel(e.shippingStatus, e.shippingPriceKrw)} (단가 미포함)</span>
+          <span>현재 {fmtU(unitOf(product, basis))}</span>
+          <span>배송비 {shippingLabel(e.shippingStatus, e.shippingPriceKrw)} (단가 미포함)</span>
           <a href={e.sourceUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-0.5 text-accent-700 hover:underline">
             원본 상품 <ExternalLink size={12} />
           </a>
@@ -93,7 +96,7 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
           onChange={setMode}
           options={[
             { value: 'price', label: '상품 가격(원)' },
-            { value: 'unit', label: '단가(원/kg)' },
+            { value: 'unit', label: `단가(원/${unitSuffix(basis, category.pieceLabel)})` },
             { value: 'both', label: '둘 다' },
           ]}
         />
@@ -137,7 +140,7 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
         </EmptyState>
       ) : (
         <div className="space-y-4">
-          <PriceChangeSummary price={summary.price} unit={summary.unit} />
+          <PriceChangeSummary price={summary.price} unit={summary.unit} formatUnitValue={fmtU} unitSuffix={unitSuffix(basis, category.pieceLabel)} />
           {obs.length === 1 && <p className="text-[13px] text-slate-500">관측 기록이 1건뿐이라 단일 지점만 표시합니다.</p>}
           <HistorySeriesToggle keys={seriesKeys} visible={visible} onChange={setVisible} />
           {asTable ? (
@@ -145,7 +148,7 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
               <table className="num w-full min-w-[640px] text-[12px]">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
-                    {['관측 시각(KST)', '출처', '정상가', '할인가', '쿠폰가', '최저가', '당시 중량', '가격/중량', '택배비'].map((h) => (
+                    {['관측 시각(KST)', '출처', '정상가', '할인가', '쿠폰가', '최저가', basis === 'piece' ? '당시 개수' : '당시 중량', '단가', '배송비'].map((h) => (
                       <th key={h} className="px-2.5 py-2 text-left font-semibold">
                         {h}
                       </th>
@@ -166,8 +169,8 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
                           {s.couponPriceKrw != null && s.couponEligible !== true && <span className="text-slate-400"> (제외)</span>}
                         </td>
                         <td className="px-2.5 py-1.5 font-medium">{formatKrw(s.bestPriceKrw)}</td>
-                        <td className="px-2.5 py-1.5">{formatWeightKg(s.weightKg)}</td>
-                        <td className="px-2.5 py-1.5 font-semibold">{formatUnitPrice(s.unitPriceKrwPerKg)}</td>
+                        <td className="px-2.5 py-1.5">{basis === 'piece' ? (s.pieceCount ?? '-') : formatWeightKg(s.weightKg)}</td>
+                        <td className="px-2.5 py-1.5 font-semibold">{fmtU(basis === 'piece' ? s.unitPriceKrwPerPiece : s.unitPriceKrwPerKg)}</td>
                         <td className="px-2.5 py-1.5">{shippingLabel(o.shippingStatus, o.shippingPriceKrw)}</td>
                       </tr>
                     );
@@ -176,7 +179,7 @@ export function ProductPriceHistoryDrawer({ product, onClose }: { product: Produ
               </table>
             </div>
           ) : (
-            <PriceHistoryChart points={points} mode={mode} visible={visible} />
+            <PriceHistoryChart points={points} mode={mode} visible={visible} unitSuffix={unitSuffix(basis, category.pieceLabel)} formatUnitValue={fmtU} />
           )}
         </div>
       )}

@@ -1,12 +1,12 @@
 import { Brush, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipProps } from 'recharts';
 import { AXIS, HISTORY_COLORS, krwTick, niceScale } from '../lib/chartColors';
-import { formatKrw, formatKst, formatKstShort, formatSignedKrw, formatUnitPrice, shippingLabel } from '../lib/domain/format';
+import { formatKrw, formatKst, formatKstShort, formatSignedKrw, shippingLabel } from '../lib/domain/format';
 import { SERIES_LABEL, type HistoryPoint, type SeriesKey } from '../lib/domain/history';
 import { PRICE_KIND_LABEL } from '../lib/domain/pricing';
 
 const PRICE_KEYS: SeriesKey[] = ['regular', 'sale', 'coupon', 'best'];
 
-function HistoryTooltip({ active, payload }: TooltipProps<number, string>) {
+function HistoryTooltip({ active, payload, fmtUnit }: TooltipProps<number, string> & { fmtUnit: (v: number | null) => string }) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload as HistoryPoint;
   const o = p.observation;
@@ -34,11 +34,11 @@ function HistoryTooltip({ active, payload }: TooltipProps<number, string>) {
           {formatKrw(p.best)}
           {snap.bestPriceKind ? <span className="text-slate-400"> ({PRICE_KIND_LABEL[snap.bestPriceKind]})</span> : null}
         </dd>
-        <dt className="font-medium text-slate-700">가격/중량</dt>
-        <dd className="text-right font-semibold">{formatUnitPrice(p.unit)}</dd>
-        <dt className="text-slate-500">당시 중량</dt>
-        <dd className="text-right">{snap.weightKg != null ? `${snap.weightKg}kg` : '-'}</dd>
-        <dt className="text-slate-500">택배비(별도)</dt>
+        <dt className="font-medium text-slate-700">단가</dt>
+        <dd className="text-right font-semibold">{fmtUnit(p.unit)}</dd>
+        <dt className="text-slate-500">당시 중량·개수</dt>
+        <dd className="text-right">{snap.weightKg != null ? `${snap.weightKg}kg` : '-'} · {snap.pieceCount ?? '-'}</dd>
+        <dt className="text-slate-500">배송비(별도)</dt>
         <dd className="text-right">{shippingLabel(o.shippingStatus, o.shippingPriceKrw)}</dd>
       </dl>
       {p.bestDelta != null && p.bestDelta !== 0 && (
@@ -73,12 +73,14 @@ function Chart({
   height,
   syncId,
   showBrush,
+  fmtUnit,
 }: {
   data: HistoryPoint[];
   keys: SeriesKey[];
   height: number;
   syncId: string;
   showBrush: boolean;
+  fmtUnit: (v: number | null) => string;
 }) {
   const t0 = data[0]?.t ?? 0;
   const t1 = data[data.length - 1]?.t ?? 0;
@@ -108,7 +110,7 @@ function Chart({
             {...niceScale(data.flatMap((d) => keys.map((k) => d[k])))}
                         allowDecimals={false}
           />
-          <Tooltip content={<HistoryTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1 }} wrapperStyle={{ outline: 'none', zIndex: 10 }} />
+          <Tooltip content={<HistoryTooltip fmtUnit={fmtUnit} />} cursor={{ stroke: '#94a3b8', strokeWidth: 1 }} wrapperStyle={{ outline: 'none', zIndex: 10 }} />
           {keys.map((k) => (
             <Line
               key={k}
@@ -142,10 +144,14 @@ export function PriceHistoryChart({
   points,
   mode,
   visible,
+  unitSuffix,
+  formatUnitValue,
 }: {
   points: HistoryPoint[];
   mode: HistoryDisplayMode;
   visible: Record<SeriesKey, boolean>;
+  unitSuffix: string;
+  formatUnitValue: (v: number | null) => string;
 }) {
   const priceKeys = PRICE_KEYS.filter((k) => visible[k]);
   const showPrice = mode !== 'unit' && priceKeys.length > 0;
@@ -155,14 +161,14 @@ export function PriceHistoryChart({
     <div className="space-y-3">
       {showUnit && (
         <div>
-          <div className="mb-1 text-xs font-semibold text-slate-600">가격/중량 · 단위 원/kg (배송비 제외)</div>
-          <Chart data={points} keys={['unit']} height={both ? 200 : 280} syncId="ph" showBrush={!both} />
+          <div className="mb-1 text-xs font-semibold text-slate-600">단가 · 단위 원/{unitSuffix} (배송비 제외)</div>
+          <Chart fmtUnit={formatUnitValue} data={points} keys={['unit']} height={both ? 200 : 280} syncId="ph" showBrush={!both} />
         </div>
       )}
       {showPrice && (
         <div>
           <div className="mb-1 text-xs font-semibold text-slate-600">상품 가격 · 단위 원</div>
-          <Chart data={points} keys={priceKeys} height={both ? 220 : 300} syncId="ph" showBrush />
+          <Chart fmtUnit={formatUnitValue} data={points} keys={priceKeys} height={both ? 220 : 300} syncId="ph" showBrush />
         </div>
       )}
       {!showPrice && !showUnit && <p className="py-10 text-center text-sm text-slate-500">표시할 시리즈를 선택하세요.</p>}

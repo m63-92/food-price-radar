@@ -1,0 +1,95 @@
+{
+  "_comment": "개수(입·개·구·알·포기·단) 해석 벡터 — TS(src/lib/domain/pieces.test.ts)·Python(tests/test_piece_parser.py) 공용. 망·박스·봉·판은 포장 단위라 개수가 아니며 'N구 x M판' 처럼 곱해질 때만 반영.",
+  "cases": [
+    {
+      "text": "계란 특란 30구",
+      "count": 30,
+      "label": "구",
+      "status": "ok"
+    },
+    {
+      "text": "신선한 계란 왕란 30알",
+      "count": 30,
+      "label": "알",
+      "status": "ok"
+    },
+    {
+      "text": "계란 30구 x 2판",
+      "count": 60,
+      "label": "구",
+      "status": "ok"
+    },
+    {
+      "text": "메추리알 50입",
+      "count": 50,
+      "label": "입",
+      "status": "ok"
+    },
+    {
+      "text": "★매일시장특가★ 배추 (국내산, 상, 3입, 48망)",
+      "count": 3,
+      "label": "입",
+      "status": "ok"
+    },
+    {
+      "text": "배추 3개입",
+      "count": 3,
+      "label": "입",
+      "status": "ok"
+    },
+    {
+      "text": "★초특가★ 배추(3입,겉잎포함,상,7kg내외망,국산)",
+      "count": 3,
+      "label": "입",
+      "status": "ok"
+    },
+    {
+      "text": "배추 3~4개,8~10kg내외 국내산",
+      "count": null,
+      "label": null,
+      "status": "ambiguous"
+    },
+    {
+      "text": "흙대파 1단 (국내산)",
+      "count": 1,
+      "label": "단",
+      "status": "ok"
+    },
+    {
+      "text": "깐마늘 1kg",
+      "count": null,
+      "label": null,
+      "status": "missing"
+    },
+    {
+      "text": "피양파 2번구 230g 내외 (대아청과 1099번) 15kg/EA",
+      "count": null,
+      "label": null,
+      "status": "missing"
+    },
+    {
+      "text": "배추(48/50망 내외)",
+      "count": null,
+      "label": null,
+      "status": "missing"
+    },
+    {
+      "text": "계란 10구 (개당 60g)",
+      "count": 10,
+      "label": "구",
+      "status": "ok"
+    },
+    {
+      "text": "달걀 15구 30구 혼합",
+      "count": null,
+      "label": null,
+      "status": "ambiguous"
+    },
+    {
+      "text": "",
+      "count": null,
+      "label": null,
+      "status": "missing"
+    }
+  ]
+}

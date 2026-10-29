@@ -21,9 +21,11 @@ function obs(
     couponPriceKrw: coupon,
     couponEligible,
     weightKg,
+    pieceCount: null,
     bestPriceKrw: best.bestPriceKrw,
     bestPriceKind: best.kind,
     unitPriceKrwPerKg: computeUnitPrice(best.bestPriceKrw, weightKg),
+    unitPriceKrwPerPiece: null,
   };
   return {
     id,

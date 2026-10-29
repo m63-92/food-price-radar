@@ -3,7 +3,7 @@ import type { ShippingStatus } from '../../types';
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const krw = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
 
-export type UnitBasis = 'kg' | '100g';
+export type UnitView = 'kg' | '100g';
 
 /** 값이 없으면 숫자 0 이 아닌 '-' (명세 5.1) */
 export function formatKrw(n: number | null | undefined): string {
@@ -11,7 +11,7 @@ export function formatKrw(n: number | null | undefined): string {
   return `₩${krw.format(Math.round(n))}`;
 }
 
-export function formatUnitPrice(perKg: number | null | undefined, basis: UnitBasis = 'kg'): string {
+export function formatUnitPrice(perKg: number | null | undefined, basis: UnitView = 'kg'): string {
   if (perKg == null || !Number.isFinite(perKg)) return '-';
   return basis === 'kg' ? `₩${krw.format(Math.round(perKg))}/kg` : `₩${krw.format(Math.round(perKg / 10))}/100g`;
 }
